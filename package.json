@@ -9,7 +9,7 @@
   "types": "./dist/index.d.ts",
   "files": ["dist"],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && chmod +x dist/cli.js",
     "prepublishOnly": "npm run build"
   },
   "keywords": ["claude", "claude-code", "usage", "stats", "anthropic"],
