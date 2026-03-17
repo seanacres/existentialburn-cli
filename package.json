@@ -1,18 +1,26 @@
 {
   "name": "existentialburn",
-  "version": "0.1.0",
-  "description": "Extract your Claude Code usage stats. Runs 100% locally \u2014 your prompts never leave your machine.",
+  "version": "0.1.1",
+  "description": "Extract your Claude Code usage stats. Runs 100% locally — your prompts never leave your machine.",
   "bin": {
     "existentialburn": "./dist/cli.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc && chmod +x dist/cli.js",
     "prepublishOnly": "npm run build"
   },
-  "keywords": ["claude", "claude-code", "usage", "stats", "anthropic"],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "usage",
+    "stats",
+    "anthropic"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/seanacres/existentialburn-cli.git"
