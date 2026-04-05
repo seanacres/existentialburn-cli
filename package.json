@@ -1,18 +1,26 @@
 {
   "name": "existentialburn",
-  "version": "0.1.1",
+  "version": "0.1.3",
   "description": "Extract your Claude Code usage stats. Runs 100% locally — your prompts never leave your machine.",
   "bin": {
-    "existentialburn": "./dist/cli.js"
+    "existentialburn": "dist/cli.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
     "dist"
   ],
+  "type": "commonjs",
   "scripts": {
-    "build": "tsc && chmod +x dist/cli.js",
-    "prepublishOnly": "npm run build"
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint:pkg": "publint .",
+    "test:smoke": "bash scripts/smoke-test.sh",
+    "prepublishOnly": "npm run build && npm run lint:pkg"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "keywords": [
     "claude",
@@ -23,14 +31,13 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/seanacres/existentialburn-cli.git"
+    "url": "git+https://github.com/seanacres/existentialburn-cli.git"
   },
   "license": "MIT",
   "engines": {
     "node": ">=18"
   },
   "devDependencies": {
-    "@types/node": "^25.5.0",
     "typescript": "^5.0.0"
   }
 }

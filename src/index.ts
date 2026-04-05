@@ -24,6 +24,10 @@ export interface UsageBlock {
   output_tokens?: number;
   cache_read_input_tokens?: number;
   cache_creation_input_tokens?: number;
+  cache_creation?: {
+    ephemeral_5m_input_tokens?: number;
+    ephemeral_1h_input_tokens?: number;
+  };
 }
 
 interface ToolUseBlock {
@@ -120,31 +124,53 @@ export interface ExtractOptions {
 
 // --- Pricing ---
 
-const PRICING: Record<string, { input: number; output: number; cacheRead: number; cacheCreate: number }> = {
-  "claude-opus-4-6": { input: 15e-6, output: 75e-6, cacheRead: 1.5e-6, cacheCreate: 18.75e-6 },
-  "claude-opus-4-5-20251101": { input: 15e-6, output: 75e-6, cacheRead: 1.5e-6, cacheCreate: 18.75e-6 },
-  "claude-sonnet-4-5-20250929": { input: 3e-6, output: 15e-6, cacheRead: 0.3e-6, cacheCreate: 3.75e-6 },
-  "claude-sonnet-4-6": { input: 3e-6, output: 15e-6, cacheRead: 0.3e-6, cacheCreate: 3.75e-6 },
-  "claude-haiku-4-5-20251001": { input: 0.8e-6, output: 4e-6, cacheRead: 0.08e-6, cacheCreate: 1e-6 },
+// Pricing source: https://docs.anthropic.com/en/docs/about-claude/pricing
+// Cache multipliers: read = 0.1x input, 5min write = 1.25x input, 1h write = 2x input
+const PRICING: Record<string, { input: number; output: number; cacheRead: number; cacheCreate5m: number; cacheCreate1h: number }> = {
+  // Opus 4.5 / 4.6 — $5 / $25
+  "claude-opus-4-6": { input: 5e-6, output: 25e-6, cacheRead: 0.5e-6, cacheCreate5m: 6.25e-6, cacheCreate1h: 10e-6 },
+  "claude-opus-4-5-20251101": { input: 5e-6, output: 25e-6, cacheRead: 0.5e-6, cacheCreate5m: 6.25e-6, cacheCreate1h: 10e-6 },
+  // Opus 4 / 4.1 — $15 / $75
+  "claude-opus-4-1-20250414": { input: 15e-6, output: 75e-6, cacheRead: 1.5e-6, cacheCreate5m: 18.75e-6, cacheCreate1h: 30e-6 },
+  "claude-opus-4-20250414": { input: 15e-6, output: 75e-6, cacheRead: 1.5e-6, cacheCreate5m: 18.75e-6, cacheCreate1h: 30e-6 },
+  // Sonnet — $3 / $15
+  "claude-sonnet-4-6": { input: 3e-6, output: 15e-6, cacheRead: 0.3e-6, cacheCreate5m: 3.75e-6, cacheCreate1h: 6e-6 },
+  "claude-sonnet-4-5-20250929": { input: 3e-6, output: 15e-6, cacheRead: 0.3e-6, cacheCreate5m: 3.75e-6, cacheCreate1h: 6e-6 },
+  // Haiku 4.5 — $1 / $5
+  "claude-haiku-4-5-20251001": { input: 1e-6, output: 5e-6, cacheRead: 0.1e-6, cacheCreate5m: 1.25e-6, cacheCreate1h: 2e-6 },
 };
 
 function estimateCost(model: string, usage: UsageBlock): number {
   const key = Object.keys(PRICING).find((k) => model.includes(k) || k.includes(model))
     ?? (model.includes("opus") ? "claude-opus-4-6"
       : model.includes("haiku") ? "claude-haiku-4-5-20251001"
-      : "claude-sonnet-4-5-20250929");
+        : "claude-sonnet-4-5-20250929");
   const p = PRICING[key];
+
+  let cacheCost: number;
+  const cc = usage.cache_creation;
+  if (cc && ((cc.ephemeral_5m_input_tokens ?? 0) > 0 || (cc.ephemeral_1h_input_tokens ?? 0) > 0)) {
+    // Use granular breakdown when available (Claude Code provides this)
+    cacheCost =
+      (cc.ephemeral_5m_input_tokens ?? 0) * p.cacheCreate5m +
+      (cc.ephemeral_1h_input_tokens ?? 0) * p.cacheCreate1h;
+  } else {
+    // Fallback: assume 1h cache (Claude Code's default) when breakdown not available
+    cacheCost = (usage.cache_creation_input_tokens ?? 0) * p.cacheCreate1h;
+  }
+
   return (
     (usage.input_tokens ?? 0) * p.input +
     (usage.output_tokens ?? 0) * p.output +
     (usage.cache_read_input_tokens ?? 0) * p.cacheRead +
-    (usage.cache_creation_input_tokens ?? 0) * p.cacheCreate
+    cacheCost
   );
 }
 
 // --- File Discovery ---
 
 function findJsonlFiles(baseDir: string): string[] {
+  const resolvedBase = fs.realpathSync(baseDir);
   const results: string[] = [];
   function walk(dir: string) {
     let entries: fs.Dirent[];
@@ -155,6 +181,19 @@ function findJsonlFiles(baseDir: string): string[] {
     }
     for (const entry of entries) {
       const full = path.join(dir, entry.name);
+
+      // Security: skip symlinks that escape the base directory
+      if (entry.isSymbolicLink()) {
+        try {
+          const realTarget = fs.realpathSync(full);
+          if (!realTarget.startsWith(resolvedBase + path.sep) && realTarget !== resolvedBase) {
+            continue;
+          }
+        } catch {
+          continue; // broken symlink — skip
+        }
+      }
+
       if (entry.isDirectory()) {
         walk(full);
       } else if (entry.name.endsWith(".jsonl")) {
@@ -162,7 +201,7 @@ function findJsonlFiles(baseDir: string): string[] {
       }
     }
   }
-  walk(baseDir);
+  walk(resolvedBase);
   return results;
 }
 
@@ -187,11 +226,13 @@ function computeStreaks(dates: string[]): { longestStreak: number; currentStreak
     }
   }
 
-  const lastDate = new Date(unique[unique.length - 1]);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const diffFromToday = (today.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
-  const isCurrentStreak = diffFromToday <= 1;
+  // Dates in unique[] come from ts.slice(0,10) on ISO timestamps (UTC dates).
+  // Compare as strings to avoid UTC/local timezone mismatch from Date parsing.
+  const lastDateStr = unique[unique.length - 1];
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+  const yesterdayStr = new Date(now.getTime() - 86400000).toISOString().slice(0, 10);
+  const isCurrentStreak = lastDateStr === todayStr || lastDateStr === yesterdayStr;
 
   return {
     longestStreak: longest,
