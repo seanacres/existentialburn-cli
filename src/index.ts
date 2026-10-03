@@ -17,6 +17,17 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 
+import { perTokenRates, resolveModelRates } from "./models";
+
+export {
+  CURRENT_MODELS,
+  LEGACY_MODELS,
+  MODEL_RATES,
+  perTokenRates,
+  resolveModelRates,
+} from "./models";
+export type { ModelRates, PerTokenRates, ResolvedRates } from "./models";
+
 // --- Types ---
 
 export interface UsageBlock {
@@ -106,6 +117,14 @@ export interface MetaData {
   filesProcessed: number;
   projectCount: number;
   distinctModels: string[];
+  /**
+   * Models whose rate had to be guessed from the tier name because the pricing
+   * catalogue has never seen them — normally a model released after this
+   * version of the package. Their cost is an estimate at the current rate for
+   * that tier, which is wrong whenever a new tier prices differently (Claude
+   * Fable 5 shipped at 5x the Sonnet rate). Empty in the ordinary case.
+   */
+  unpricedModels: string[];
   totalToolCalls: Record<string, number>;
   longestSession: { id: string; durationMs: number; messageCount: number } | null;
   longestStreak: number;
@@ -124,28 +143,11 @@ export interface ExtractOptions {
 
 // --- Pricing ---
 
-// Pricing source: https://docs.anthropic.com/en/docs/about-claude/pricing
-// Cache multipliers: read = 0.1x input, 5min write = 1.25x input, 1h write = 2x input
-const PRICING: Record<string, { input: number; output: number; cacheRead: number; cacheCreate5m: number; cacheCreate1h: number }> = {
-  // Opus 4.5 / 4.6 — $5 / $25
-  "claude-opus-4-6": { input: 5e-6, output: 25e-6, cacheRead: 0.5e-6, cacheCreate5m: 6.25e-6, cacheCreate1h: 10e-6 },
-  "claude-opus-4-5-20251101": { input: 5e-6, output: 25e-6, cacheRead: 0.5e-6, cacheCreate5m: 6.25e-6, cacheCreate1h: 10e-6 },
-  // Opus 4 / 4.1 — $15 / $75
-  "claude-opus-4-1-20250414": { input: 15e-6, output: 75e-6, cacheRead: 1.5e-6, cacheCreate5m: 18.75e-6, cacheCreate1h: 30e-6 },
-  "claude-opus-4-20250414": { input: 15e-6, output: 75e-6, cacheRead: 1.5e-6, cacheCreate5m: 18.75e-6, cacheCreate1h: 30e-6 },
-  // Sonnet — $3 / $15
-  "claude-sonnet-4-6": { input: 3e-6, output: 15e-6, cacheRead: 0.3e-6, cacheCreate5m: 3.75e-6, cacheCreate1h: 6e-6 },
-  "claude-sonnet-4-5-20250929": { input: 3e-6, output: 15e-6, cacheRead: 0.3e-6, cacheCreate5m: 3.75e-6, cacheCreate1h: 6e-6 },
-  // Haiku 4.5 — $1 / $5
-  "claude-haiku-4-5-20251001": { input: 1e-6, output: 5e-6, cacheRead: 0.1e-6, cacheCreate5m: 1.25e-6, cacheCreate1h: 2e-6 },
-};
-
+// Model IDs and rates live in ./models. Nothing here may name one: a hardcoded
+// ID is invisible until the model retires, because a deprecated model answers
+// normally right up to that date.
 function estimateCost(model: string, usage: UsageBlock): number {
-  const key = Object.keys(PRICING).find((k) => model.includes(k) || k.includes(model))
-    ?? (model.includes("opus") ? "claude-opus-4-6"
-      : model.includes("haiku") ? "claude-haiku-4-5-20251001"
-        : "claude-sonnet-4-5-20250929");
-  const p = PRICING[key];
+  const p = perTokenRates(resolveModelRates(model).rates);
 
   let cacheCost: number;
   const cc = usage.cache_creation;
@@ -515,6 +517,9 @@ export function extract(options?: ExtractOptions): ExtractedData {
       filesProcessed: processed,
       projectCount: projectSlugs.size,
       distinctModels: [...allModels].sort(),
+      unpricedModels: [...allModels]
+        .filter((m) => resolveModelRates(m).guessed)
+        .sort(),
       totalToolCalls: globalToolCalls,
       longestSession,
       longestStreak,

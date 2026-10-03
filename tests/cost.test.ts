@@ -115,8 +115,8 @@ describe("cost estimation — known models", () => {
   });
 
   // Opus 4.1: $15/$75 per 1M tokens
-  it("claude-opus-4-1-20250414: input=$15/1M, output=$75/1M", () => {
-    const cost = getCostForMessage("claude-opus-4-1-20250414", {
+  it("claude-opus-4-1-20250805: input=$15/1M, output=$75/1M", () => {
+    const cost = getCostForMessage("claude-opus-4-1-20250805", {
       input_tokens: 1_000_000,
       output_tokens: 0,
     });
@@ -210,7 +210,7 @@ describe("cost estimation — unknown model fallback", () => {
       input_tokens: 1_000_000,
       output_tokens: 0,
     });
-    // Falls back to opus-4-6 pricing: $5/1M
+    // Falls back to the current Opus rate: $5/1M
     expect(cost).toBeCloseTo(5.0, 2);
   });
 
@@ -228,8 +228,8 @@ describe("cost estimation — unknown model fallback", () => {
       input_tokens: 1_000_000,
       output_tokens: 0,
     });
-    // Falls back to sonnet pricing: $3/1M
-    expect(cost).toBeCloseTo(3.0, 2);
+    // Falls back to the current Sonnet rate: $2/1M
+    expect(cost).toBeCloseTo(2.0, 2);
   });
 
   it("completely unknown model falls back to sonnet pricing", () => {
@@ -237,8 +237,8 @@ describe("cost estimation — unknown model fallback", () => {
       input_tokens: 1_000_000,
       output_tokens: 0,
     });
-    // Default fallback is sonnet: $3/1M
-    expect(cost).toBeCloseTo(3.0, 2);
+    // Default fallback is the current Sonnet rate: $2/1M
+    expect(cost).toBeCloseTo(2.0, 2);
   });
 });
 

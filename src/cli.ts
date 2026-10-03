@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { extract } from './index';
+import { CURRENT_MODELS } from './models';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -13,7 +14,7 @@ Usage:
 
 Extracts the following from ~/.claude/projects/ JSONL files:
   - Token counts (input, output, cache read, cache creation)
-  - Model names (e.g. claude-opus-4-6, claude-sonnet-4-5)
+  - Model names (e.g. ${CURRENT_MODELS.deepest}, ${CURRENT_MODELS.default})
   - Timestamps and session durations
   - Tool call names (e.g. Read, Edit, Bash)
   - Session IDs and project slugs
@@ -49,6 +50,15 @@ try {
   process.stderr.write(`\u2713 ${Object.values(data.meta.totalToolCalls).reduce((s, v) => s + v, 0).toLocaleString()} tool calls\n`);
   if (data.meta.subagentSpawns > 0) {
     process.stderr.write(`\u2713 ${data.meta.subagentSpawns} subagent spawns\n`);
+  }
+  // A model released after this package version has no rate here, so its cost is
+  // a guess from the tier name. Say so rather than fold it silently into a total.
+  if (data.meta.unpricedModels.length > 0) {
+    process.stderr.write(
+      `\n! No published rate for ${data.meta.unpricedModels.join(', ')} \u2014 ` +
+      `estimated at the current rate for that tier.\n` +
+      `  Upgrade with: npx existentialburn@latest\n`,
+    );
   }
   process.stderr.write(`\nUpload at https://existentialburn.com/upload\n`);
 

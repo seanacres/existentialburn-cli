@@ -1,6 +1,8 @@
 # existentialburn
 
-Extract your Claude Code usage stats. Runs 100% locally — your prompts and code never leave your machine. Only token counts, tool calls, timestamps, and model names are extracted.
+Extract your Claude Code usage stats. Runs 100% locally and writes a file to your disk; nothing is sent anywhere until you upload it yourself.
+
+**No prompt or code content is extracted.** What is extracted is usage metadata: token counts, tool call counts, timestamps, model names, session durations, project names, and git branch names. Project and branch names are real strings from your machine, so review the output before uploading.
 
 ## Quick start
 
@@ -19,7 +21,7 @@ The extractor reads `~/.claude/projects/` JSONL conversation files and outputs s
 - **Totals** — lifetime token/cost/session/message/day counts
 - **Metadata** — streaks, longest session, tool call breakdown, project count, date range
 
-> **Note:** Git branch names (e.g. `fix-acme-billing-bug`) are included in session data. If your branch names contain sensitive information, review the output before uploading.
+> **Note:** Project names and git branch names (e.g. `fix-acme-billing-bug`) are included in session data. If either can contain sensitive information, review the output before uploading, or use the paranoid redaction level on the upload page, which strips both.
 
 ## What it does NOT extract
 
@@ -27,7 +29,9 @@ The extractor reads `~/.claude/projects/` JSONL conversation files and outputs s
 - Code snippets or file contents
 - Tool call arguments or parameters
 - Images or binary data
-- Any personally identifiable information beyond usage patterns
+- Real names, email addresses, or credentials
+
+The no-network property is structural, not a policy: `src/` imports exactly three modules (`fs`, `path`, `os`), so there is no network client in scope to call. A 14-test data-boundary suite seeds realistic secrets (an API key, an SSH key path, a database URL) and asserts none reach the output.
 
 ## Programmatic usage
 
